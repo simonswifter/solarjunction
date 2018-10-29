@@ -20,21 +20,17 @@ import warnings
 import re
 import matplotlib.cm as cm
 import convert_sig_figs
+import matplotlib.backends.backend_pdf
+import datetime
+import warnings
+warnings.filterwarnings('ignore')
 
-from IPython.display import HTML
-HTML('''<script>
-code_show_err=false; 
-function code_toggle_err() {
- if (code_show_err){
- $('div.output_stderr').hide();
- } else {
- $('div.output_stderr').show();
- }
- code_show_err = !code_show_err
-} 
-$( document ).ready(code_toggle_err);
-</script>
-To toggle on/off output_stderr, click <a href="javascript:code_toggle_err()">here</a>.''')
+
+def get_directory(default_dir, prompt):
+    root = tk.Tk()
+    root.withdraw()
+    directory = filedialog.askdirectory(initialdir = default_dir, title = prompt)
+    return directory
 
 class detector_data():
     def __init__(self,v,i,temp,power,name, x_coord, y_coord, wafername):
@@ -101,11 +97,18 @@ def retrieve_two_point_files_from_directory(directory):
 					print("Error parsing file path. Sorry!")
 	return filepaths
 
-
+def get_all_wafernames(filepath):
+    devices = define_detector_files(filepath)
+    wafernames = []
+    devices = sorted(devices, key=lambda x: x.wafername)
+    for i in range(0,len(devices)):
+        wafernames= np.append(wafernames,devices[i].wafername)
+    wafernames= list(set(wafernames))
+    return wafernames
 
 def create_detector_liv_dataframe(filepath):
     data_df = pd.read_csv(filepath, header=None,index_col=0,skiprows=43).T
-    params_df = pd.read_csv(filepath, header=None,index_col=0,error_bad_lines=False).T
+    params_df = pd.read_csv(filepath, header=None,index_col=0,usecols=[0,1],error_bad_lines=False).T
     data_df.columns = data_df.columns.str.lower().str.replace(' ', '_')
     
     return data_df, params_df
@@ -152,7 +155,8 @@ def define_detector_files(filepath):
 	            device_data = detector_data(V,I,temp,power,name,x_coord,y_coord,wafername)
 	            devices_data = np.append(devices_data, device_data)
         except:
-            print("error with"+file_list[i])
+            x=0
+            #print("error with"+file_list[i])
     print(str(len(devices_data))+ " data entries loaded")
     print(str((len(file_list)-len(devices_data)))+' data entries skippped')
     return devices_data
@@ -179,7 +183,7 @@ def define_two_point_detector_data(filepath):
             	datapoint = detector_two_point_data(wafername, lot, dev_name, x_coord, y_coord, Imeas, Vmeas, Iset, Vset, Vcomp, Icomp, selected)
             	data_points = np.append(data_points, datapoint)
         except:
-            print("error with"+file_list[i])
+            x=0
     print(str(len(data_points))+ " data points ready, from " + str(len(file_list)) +' total files')
     return data_points
 
@@ -325,7 +329,7 @@ def plot_detector_data_by_power(devices,graph_type='linear',wafername='wafer', d
     plt.legend()
     plt.show()
 
-def plot_detector_two_point_data_by_wafer(datapoints, best_devices='no', dev_name = "various devices", lot = 'lot'):
+def plot_detector_two_point_data_by_wafer(datapoints, best_devices='no', dev_name = "various devices", lot = 'lot',show=True):
 	wafernames = []
 	iset = []
 	vset = []
@@ -340,7 +344,7 @@ def plot_detector_two_point_data_by_wafer(datapoints, best_devices='no', dev_nam
 		imeas = np.append(imeas,datapoints[i].Imeas)
 		vmeas = np.append(vmeas,datapoints[i].Vmeas)
 	wafernames= list(set(wafernames))
-	fig = plt.figure()
+	fig = plt.figure(figsize=(19.2,10.8), dpi=100)
 	plt.subplot(211)
 	plt.title("Two Point Data for Lot: " + lot + " Device: " + dev_name + ". Best Devices: " + best_devices)
 	for i in range(0,len(datapoints)):
@@ -352,7 +356,7 @@ def plot_detector_two_point_data_by_wafer(datapoints, best_devices='no', dev_nam
 					plt.plot(datapoints[i].Vmeas,datapoints[i].Imeas, color=colors[j], marker = 'o')
 	
 	
-	plt.xlabel("Turn on Voltage (V) @ " + str(convert_sig_figs.RoundToSigFigs(np.mean(iset),3)) + " mA +/- " + str(convert_sig_figs.RoundToSigFigs(np.std(iset),3)) + " mA")
+	plt.xlabel("Turn on Voltage (V) @ " + str(np.mean(iset))+ " mA +/- " + str(np.std(iset)) + " mA")
 	plt.ylabel("Dark current (mA) @ " + str(np.mean(vset)) + " V +/- " + str(np.std(vset)) + " V")
 	plt.legend()
 	plt.grid()
@@ -364,13 +368,14 @@ def plot_detector_two_point_data_by_wafer(datapoints, best_devices='no', dev_nam
 	plt.subplot(224)
 	plt.hist(vmeas, bins = 50)
 	plt.title("Turn on Voltages")
-	plt.xlabel("Turn on Voltage (V)  @ " + str(convert_sig_figs.RoundToSigFigs(np.mean(iset),3)) + " mA +/- " + str(convert_sig_figs.RoundToSigFigs(np.std(iset),3)) + " mA")
+	plt.xlabel("Turn on Voltage (V)  @ " +  str(np.mean(iset))+ " mA +/- " + str(np.std(iset)) + " mA")
 	plt.ylabel("Counts")
-	mng = plt.get_current_fig_manager()
-	mng.window.showMaximized()
-	plt.show()
+	#mng = plt.get_current_fig_manager()
+	#mng.window.showMaximized()
+	if show==True:
+		plt.show()
 
-def map_best_detector_two_point_data_by_wafer(datapoints, dev_name = "various devices", lot = 'lot'):
+def map_best_detector_two_point_data_by_wafer(datapoints, dev_name = "various devices", lot = 'lot',show=True):
 	wafernames = []
 	colors = cm.hsv(np.linspace(0, 1, 10))
 	datapoints = sorted(datapoints, key=lambda x: x.wafername)
@@ -378,7 +383,8 @@ def map_best_detector_two_point_data_by_wafer(datapoints, dev_name = "various de
 		wafernames= np.append(wafernames,datapoints[i].wafername)
 	wafernames= list(set(wafernames))
 	print(len(wafernames))
-	fig, ax = plt.subplots()
+	fig=plt.figure(figsize=(19.2,10.8), dpi=100)
+	    
 	fig.suptitle("Best Device Map for Lot: " + lot + " Device: " + dev_name)
 	for i in range(0,len(datapoints)):
 		for j in range(0,len(wafernames)):
@@ -396,7 +402,8 @@ def map_best_detector_two_point_data_by_wafer(datapoints, dev_name = "various de
 						plt.plot(datapoints[i].x_coord,datapoints[i].y_coord, color=colors[j], marker = 'o', label= str(wafernames[j]))
 					else:
 						plt.plot(datapoints[i].x_coord,datapoints[i].y_coord, color=colors[j], marker = 'o')
-	
+	if show==True:
+		plt.show()
 
 def find_shorts_open_circuits(datapoints, dev_name = "various devices", lot = 'lot'):
 	wafernames = []
@@ -434,7 +441,7 @@ def find_shorts_open_circuits(datapoints, dev_name = "various devices", lot = 'l
 					else:
 						plt.plot(datapoints[i].x_coord,datapoints[i].y_coord, color=colors[j], marker = 'x')
 
-def plot_detector_data_by_wafer(devices,graph_type='linear', device_name = 'various devices', temp='0 C', power = '0'):
+def plot_detector_data_by_wafer(devices,graph_type='linear', device_name = 'various devices', temp='0 C', power = '0',show=True):
     colors = cm.hsv(np.linspace(0, 1, 10))
     patches = ['r', 'b', 'g', 'k', 'm']
     wafernames = []
@@ -465,7 +472,8 @@ def plot_detector_data_by_wafer(devices,graph_type='linear', device_name = 'vari
     plt.ylabel('Current (I)')
     plt.grid()
     plt.legend()
-    plt.show()
+    if show==True:
+        plt.show()
 
 
 def plot_detector_data_by_temp(devices,graph_type='linear',wafername='wafer',power = '0'):
@@ -538,151 +546,154 @@ def plot_detector_data_by_name(devices,graph_type='linear',wafername='wafer',tem
 
 def create_prelim_report(filepath, wafernames, lot_name = "LOT"):
 
-	all_devices = define_detector_files(filepath)
-	lot_data = filter_detector_data(all_devices,wafernames)
+    all_devices = define_detector_files(filepath)
+    lot_data = filter_detector_data(all_devices,wafernames)
 
-	# Define Dark IV Data
-	Open_Diode_100_by_wafer_dark = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_100'], powers = [0], temps = ['all'])
-	Open_Diode_300_by_wafer_dark = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_300'], powers = [0], temps = ['all'])
-	Open_Diode_5_100_by_wafer_dark = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_5_100'], powers = [0], temps = ['all'])
-	Open_Diode_5_300_by_wafer_dark = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_5_300'], powers = [0], temps = ['all'])
-	Full_Diode_100_by_wafer_dark = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Full_Diode_100'], powers = [0], temps = ['all'])
-	Full_Diode_300_by_wafer_dark = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Full_Diode_300'], powers = [0], temps = ['all'])
+    # Define Dark IV Data
+    Open_Diode_100_by_wafer_dark = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_100'], powers = [0], temps = ['all'])
+    Open_Diode_300_by_wafer_dark = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_300'], powers = [0], temps = ['all'])
+    Open_Diode_5_100_by_wafer_dark = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_5_100'], powers = [0], temps = ['all'])
+    Open_Diode_5_300_by_wafer_dark = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_5_300'], powers = [0], temps = ['all'])
+    Full_Diode_100_by_wafer_dark = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Full_Diode_100'], powers = [0], temps = ['all'])
+    Full_Diode_300_by_wafer_dark = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Full_Diode_300'], powers = [0], temps = ['all'])
 
-	#Plot and save dark IV data
+    #Plot and save dark IV data
 	
-
-	fig1= plt.figure(1)
-	fig1.suptitle('Dark IV for ' + lot_name, fontsize=16)
-	plt.subplots_adjust(wspace = .2, hspace=.4)
-	font = {'family' : 'normal',
+    fig1= plt.figure(1,figsize=(19.2,10.8), dpi=100)
+    fig1.suptitle('Dark IV for ' + lot_name, fontsize=16)
+    plt.subplots_adjust(wspace = .2, hspace=.4)
+    font = {'family' : 'normal',
         'weight' : 'normal',
         'size'   : 12}
 
-	matplotlib.rc('font', **font)
+    matplotlib.rc('font', **font)
 	
-	
-	ax1 = plt.subplot(321)
-	plot_detector_data_by_wafer(Open_Diode_100_by_wafer_dark,graph_type='log', device_name = 'Open_Diode_100', temp='25 C', power = '0')
-	box = ax1.get_position()
-	ax1.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-	ax1.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
+    ax1 = plt.subplot(321)
+    plot_detector_data_by_wafer(Open_Diode_100_by_wafer_dark,graph_type='log', device_name = 'Open_Diode_100', temp='25 C', power = '0',show=False)
+    box = ax1.get_position()
+    ax1.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+    ax1.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
 
-	ax2 = plt.subplot(322)
-	plot_detector_data_by_wafer(Open_Diode_300_by_wafer_dark,graph_type='log', device_name = 'Open_Diode_300', temp='25 C', power = '0')
-	box = ax2.get_position()
-	ax2.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-	ax2.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
+    ax2 = plt.subplot(322)
+    plot_detector_data_by_wafer(Open_Diode_300_by_wafer_dark,graph_type='log', device_name = 'Open_Diode_300', temp='25 C', power = '0',show=False)
+    box = ax2.get_position()
+    ax2.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+    ax2.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
 
-	ax3 = plt.subplot(323)
-	plot_detector_data_by_wafer(Open_Diode_5_100_by_wafer_dark,graph_type='log', device_name = 'Open_Diode_5_100', temp='25 C', power = '0')
-	box = ax3.get_position()
-	ax3.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-	ax3.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
+    ax3 = plt.subplot(323)
+    plot_detector_data_by_wafer(Open_Diode_5_100_by_wafer_dark,graph_type='log', device_name = 'Open_Diode_5_100', temp='25 C', power = '0',show=False)
+    box = ax3.get_position()
+    ax3.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+    ax3.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
 
-	ax4= plt.subplot(324)
-	plot_detector_data_by_wafer(Open_Diode_5_300_by_wafer_dark,graph_type='log', device_name = 'Open_Diode_5_300', temp='25 C', power = '0')
-	box = ax4.get_position()
-	ax4.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-	ax4.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
+    ax4= plt.subplot(324)
+    plot_detector_data_by_wafer(Open_Diode_5_300_by_wafer_dark,graph_type='log', device_name = 'Open_Diode_5_300', temp='25 C', power = '0',show=False)
+    box = ax4.get_position()
+    ax4.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+    ax4.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
 
-	ax5 = plt.subplot(325)
-	plot_detector_data_by_wafer(Full_Diode_100_by_wafer_dark,graph_type='log', device_name = 'Full_Diode_100', temp='25 C', power = '0')
-	box = ax5.get_position()
-	ax5.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-	ax5.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
+    ax5 = plt.subplot(325)
+    plot_detector_data_by_wafer(Full_Diode_100_by_wafer_dark,graph_type='log', device_name = 'Full_Diode_100', temp='25 C', power = '0',show=False)
+    box = ax5.get_position()
+    ax5.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+    ax5.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
 
-	ax6 = plt.subplot(326)
-	plot_detector_data_by_wafer(Full_Diode_300_by_wafer_dark,graph_type='log', device_name = 'Full_Diode_300', temp='25 C', power = '0')
-	box = ax6.get_position()
-	ax6.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-	ax6.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
+    ax6 = plt.subplot(326)
+    plot_detector_data_by_wafer(Full_Diode_300_by_wafer_dark,graph_type='log', device_name = 'Full_Diode_300', temp='25 C', power = '0',show=False)
+    box = ax6.get_position()
+    ax6.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+    ax6.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
 
-	mng = plt.get_current_fig_manager()
-	mng.window.showMaximized()
-	
+	#mng = plt.get_current_fig_manager()
+	#mng.window.showMaximized()
 	# Define and plot 1mW IV Data
-	Open_Diode_100_by_wafer_1mW = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_100'], powers = [1], temps = ['all'])
-	Open_Diode_300_by_wafer_1mW = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_300'], powers = [1], temps = ['all'])
-	Open_Diode_5_100_by_wafer_1mW = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_5_100'], powers = [1], temps = ['all'])
-	Open_Diode_5_300_by_wafer_1mW = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_5_300'], powers = [1], temps = ['all'])
+    Open_Diode_100_by_wafer_1mW = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_100'], powers = [1], temps = ['all'])
+    Open_Diode_300_by_wafer_1mW = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_300'], powers = [1], temps = ['all'])
+    Open_Diode_5_100_by_wafer_1mW = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_5_100'], powers = [1], temps = ['all'])
+    Open_Diode_5_300_by_wafer_1mW = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_5_300'], powers = [1], temps = ['all'])
 
-	fig2 = plt.figure(2)
-	plt.subplots_adjust(wspace = .3, hspace=.4)
-	fig2.suptitle('Illuminated (1mW) IV for ' + lot_name, fontsize=16)
+    fig2 = plt.figure(2,figsize=(19.2,10.8), dpi=100)
+    plt.subplots_adjust(wspace = .3, hspace=.4)
+    fig2.suptitle('Illuminated (1mW) IV for ' + lot_name, fontsize=16)
 
-	ax1 = plt.subplot(221)
-	plot_detector_data_by_wafer(Open_Diode_100_by_wafer_1mW,graph_type='log', device_name = 'Open_Diode_100', temp='25 C', power = '1')
-	box = ax1.get_position()
-	ax1.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-	ax1.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
+    ax1 = plt.subplot(221)
+    plot_detector_data_by_wafer(Open_Diode_100_by_wafer_1mW,graph_type='log', device_name = 'Open_Diode_100', temp='25 C', power = '1',show=False)
+    box = ax1.get_position()
+    ax1.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+    ax1.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
 
-	ax2 = plt.subplot(222)
-	plot_detector_data_by_wafer(Open_Diode_300_by_wafer_1mW,graph_type='log', device_name = 'Open_Diode_300', temp='25 C', power = '1')
-	box = ax2.get_position()
-	ax2.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-	ax2.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
+    ax2 = plt.subplot(222)
+    plot_detector_data_by_wafer(Open_Diode_300_by_wafer_1mW,graph_type='log', device_name = 'Open_Diode_300', temp='25 C', power = '1',show=False)
+    box = ax2.get_position()
+    ax2.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+    ax2.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
 
-	ax3 = plt.subplot(223)
-	plot_detector_data_by_wafer(Open_Diode_5_100_by_wafer_1mW,graph_type='log', device_name = 'Open_Diode_5_100', temp='25 C', power = '1')
-	box = ax3.get_position()
-	ax3.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-	ax3.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
+    ax3 = plt.subplot(223)
+    plot_detector_data_by_wafer(Open_Diode_5_100_by_wafer_1mW,graph_type='log', device_name = 'Open_Diode_5_100', temp='25 C', power = '1',show=False)
+    box = ax3.get_position()
+    ax3.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+    ax3.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
 
-	ax4 = plt.subplot(224)
-	plot_detector_data_by_wafer(Open_Diode_5_300_by_wafer_1mW,graph_type='log', device_name = 'Open_Diode_5_300', temp='25 C', power = '1')
-	box = ax4.get_position()
-	ax4.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-	ax4.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
+    ax4 = plt.subplot(224)
+    plot_detector_data_by_wafer(Open_Diode_5_300_by_wafer_1mW,graph_type='log', device_name = 'Open_Diode_5_300', temp='25 C', power = '1',show=False)
+    box = ax4.get_position()
+    ax4.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+    ax4.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
 
-	mng = plt.get_current_fig_manager()
-	mng.window.showMaximized()
+
+	#mng = plt.get_current_fig_manager()
+	#mng.window.showMaximized()
 
 	# Define 5mW IV Data
-	Open_Diode_100_by_wafer_5mW = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_100'], powers = [5], temps = ['all'])
-	Open_Diode_300_by_wafer_5mW = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_300'], powers = [5], temps = ['all'])
-	Open_Diode_5_100_by_wafer_5mW = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_5_100'], powers = [5], temps = ['all'])
-	Open_Diode_5_300_by_wafer_5mW = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_5_300'], powers = [5], temps = ['all'])
+    Open_Diode_100_by_wafer_5mW = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_100'], powers = [5], temps = ['all'])
+    Open_Diode_300_by_wafer_5mW = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_300'], powers = [5], temps = ['all'])
+    Open_Diode_5_100_by_wafer_5mW = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_5_100'], powers = [5], temps = ['all'])
+    Open_Diode_5_300_by_wafer_5mW = filter_detector_data(lot_data, wafernames=['all'], device_names= ['Open_Diode_5_300'], powers = [5], temps = ['all'])
 
-	fig3 = plt.figure(3)
-	plt.subplots_adjust(wspace = .3, hspace=.4)
-	fig3.suptitle('Illuminated (5mW) IV for ' + lot_name, fontsize=16)
+    fig3 = plt.figure(3,figsize=(19.2,10.8), dpi=100)
+    plt.subplots_adjust(wspace = .3, hspace=.4)
+    fig3.suptitle('Illuminated (5mW) IV for ' + lot_name, fontsize=16)
 	
-	ax1 = plt.subplot(221)
-	plot_detector_data_by_wafer(Open_Diode_100_by_wafer_5mW,graph_type='log', device_name = 'Open_Diode_100', temp='25 C', power = '5')
-	box = ax1.get_position()
-	ax1.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-	ax1.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
+    ax1 = plt.subplot(221)
+    plot_detector_data_by_wafer(Open_Diode_100_by_wafer_5mW,graph_type='log', device_name = 'Open_Diode_100', temp='25 C', power = '5',show=False)
+    box = ax1.get_position()
+    ax1.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+    ax1.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
 
-	ax2 = plt.subplot(222)
-	plot_detector_data_by_wafer(Open_Diode_300_by_wafer_5mW,graph_type='log', device_name = 'Open_Diode_300', temp='25 C', power = '5')
-	box = ax2.get_position()
-	ax2.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-	ax2.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
+    ax2 = plt.subplot(222)
+    plot_detector_data_by_wafer(Open_Diode_300_by_wafer_5mW,graph_type='log', device_name = 'Open_Diode_300', temp='25 C', power = '5',show=False)
+    box = ax2.get_position()
+    ax2.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+    ax2.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
 
-	ax3 = plt.subplot(223)
-	plot_detector_data_by_wafer(Open_Diode_5_100_by_wafer_5mW,graph_type='log', device_name = 'Open_Diode_5_100', temp='25 C', power = '5')
-	box = ax3.get_position()
-	ax3.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-	ax3.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
+    ax3 = plt.subplot(223)
+    plot_detector_data_by_wafer(Open_Diode_5_100_by_wafer_5mW,graph_type='log', device_name = 'Open_Diode_5_100', temp='25 C', power = '5',show=False)
+    box = ax3.get_position()
+    ax3.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+    ax3.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
 
-	ax4 = plt.subplot(224)
-	plot_detector_data_by_wafer(Open_Diode_5_300_by_wafer_5mW,graph_type='log', device_name = 'Open_Diode_5_300', temp='25 C', power = '5')
-	box = ax4.get_position()
-	ax4.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-	ax4.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
+    ax4 = plt.subplot(224)
+    plot_detector_data_by_wafer(Open_Diode_5_300_by_wafer_5mW,graph_type='log', device_name = 'Open_Diode_5_300', temp='25 C', power = '5',show=False)
+    box = ax4.get_position()
+    ax4.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+    ax4.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=True)
 
-	mng = plt.get_current_fig_manager()
-	mng.window.showMaximized()
+	#mng = plt.get_current_fig_manager()
+	#mng.window.showMaximized()
 
-	datapoints = define_two_point_detector_data('Detector Data')
-	good_dev = filter_detector_two_point_data(datapoints, wafernames, device_names= ['Open_Diode_100'], only_best= 'yes')
-	plot_detector_two_point_data_by_wafer(good_dev, best_devices='yes', dev_name = "Open_Diode_100", lot = 'lot')
+    datapoints = define_two_point_detector_data(filepath)
+    good_dev = filter_detector_two_point_data(datapoints, wafernames, device_names= ['Open_Diode_100'], only_best= 'yes')
+    plot_detector_two_point_data_by_wafer(good_dev, best_devices='yes', dev_name = "Open_Diode_100", lot = 'lot',show=False)
 
-
-	map_best_detector_two_point_data_by_wafer(good_dev, dev_name = "Open_Diode_100", lot = lot_name)
-	mng = plt.get_current_fig_manager()
-	mng.window.showMaximized()
+    map_best_detector_two_point_data_by_wafer(good_dev, dev_name = "Open_Diode_100", lot = lot_name,show=False)
+    timestamp = str(datetime.datetime.now()).split('.')[0].replace(":","")
+    filename = "C:/Users/Flash/Desktop/Reports/" + str(lot_name) + " - " +str(timestamp) + ".pdf"
+    pdf = matplotlib.backends.backend_pdf.PdfPages(filename)
+    for fig in range(1, plt.gcf().number + 1): 
+        
+        pdf.savefig( fig )
+    pdf.close()
+	#mng.window.showMaximized()
 
 def plot_laser_data_by_temp(devices, current = 'absolute', wafername='wafer', plot = 'LI'):
     colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
